@@ -1,0 +1,308 @@
+import csv
+import re
+
+# Test file containing input WhatsApp messages
+# While debugging issues, generate a smaller text file
+DATA_FILE = r"C:\Users\Harsh\Downloads\whatsapp_chat.txt.txt"
+# Output file with data converted into csv format
+CSV_FILE = 'data.csv'
+
+# Strings used to find specific information in input data 
+TEACHER_MATCH = 'Teacher'
+STUDENT_MATCH = 'Student'
+LEVEL_MATCH = 'Level'
+READING_MATCH = 'Reading'
+LESSON_MATCH = 'Lesson'
+SESSION_START_MATCH = ['Start', 'Starting', 'Session start date', 'Session start', 'Session started']
+SESSION_MATCH = ['Session', 'Session number']
+
+# Keys used in storing records
+DATE_KEY = 'Date'
+TIME_KEY = 'Time'
+PHONE_KEY = 'Phone'
+TEACHER_KEY = 'Teacher'    
+STUDENT_KEY = 'Student'
+START_DATE_KEY = 'Start Date'
+LEVEL_KEY = 'Level'
+SESSION_KEY = 'Session'
+LESSON_KEY = 'Lesson'
+READING_KEY = 'Reading'
+REVIEW_KEY = 'Class Review'
+
+# Print debug statements if set to true
+DEBUG_LOG = False
+
+# This will be used to look for records
+WHATSAPP_DATETIME_FORMAT_PATTERN = r'\d{2}/\d{2}/\d{2}, \d{1,2}:\d{2} [APap][Mm] - \+\d{2} \d{5} \d{5}'
+
+# Format of records written to csv file
+CSV_FILE_RECORD_FORMAT = [DATE_KEY, TIME_KEY, PHONE_KEY, TEACHER_KEY, STUDENT_KEY,
+                          START_DATE_KEY, LEVEL_KEY, SESSION_KEY, LESSON_KEY,
+                          READING_KEY, REVIEW_KEY]
+
+# Record is valid if a student name is present.
+def valid_record(dictionary):
+    if dictionary[STUDENT_KEY] is not None:
+        return True
+    else:
+        return False
+
+# Removes empty strings
+def sanitize_input(strArray):
+    while '' in strArray:
+        strArray.remove('')
+
+# Used to log debug messages to stdout.
+# Set DEBUG_LOG to True to enable this.
+def debug_print(*str):
+    if DEBUG_LOG:
+        print(str)
+
+# Empty record has values of all keys set to None
+def get_empty_record():
+    return {
+        DATE_KEY: None,
+        TIME_KEY: None,
+        PHONE_KEY: None,
+        TEACHER_KEY: None,
+        STUDENT_KEY: None,
+        START_DATE_KEY: None,
+        LEVEL_KEY: None,
+        SESSION_KEY: None,
+        LESSON_KEY: None,
+        READING_KEY: None,
+        REVIEW_KEY: None
+    }
+
+# Looks for Teacher keyword at position index in input array of strings
+def find_teacher(strArray, index):
+    if len(strArray) > index:
+        stripStr = strArray[index].strip()
+        if TEACHER_MATCH in stripStr:
+            if index + 1 < len(strArray):
+                return strArray[index + 1].strip()
+            else:
+                debug_print("Teacher keyword with nothing next. Ignore position ", index, " from ", strArray)
+                return None
+
+# Looks for student name keyword in strArray at position index
+def find_student_name(strArray, index):
+    if len(strArray) > index:
+        stripStr = strArray[index].strip()
+        if STUDENT_MATCH in stripStr:
+            if index + 1 < len(strArray):
+                return strArray[index + 1].strip()
+            else:
+                debug_print("Student keyword with nothing next. Ignore position ", index, " from ", strArray)
+                return None
+
+# Looks for Level keyword in strArray at position index
+# If position is -1 look for the first occurrence in the entire array
+# It is expected that the actual level will be in the next position in the array
+def find_level(strArray, index):
+    if len(strArray) > index:
+        if index == -1:
+            # Look in all list
+            try:
+                ind = strArray.index(LEVEL_MATCH)
+                if ind + 1 < len(strArray):
+                    return strArray[ind + 1].strip()
+                else:
+                    debug_print("Level keyword with nothing next. Ignore position ", index, " from ", strArray)
+                    return None
+            except ValueError:
+                # No level, return none
+                return None
+        else:
+            # Look at the given position
+            stripStr = strArray[index].strip()
+            if LEVEL_MATCH in stripStr:
+                if index + 1 < len(strArray):
+                    return strArray[index + 1].strip()
+                else:
+                    debug_print("Level keyword with nothing next. Ignore position ", index, " from ", strArray)
+                    return None
+            else:
+                return None
+
+# Looks for session start date keyword(s) in strArray at position index
+def find_start_date(strArray, index):
+    if len(strArray) > index:
+        stripStr = strArray[index].strip()
+        if any(x in stripStr for x in SESSION_START_MATCH):
+            if index + 1 < len(strArray):
+                return strArray[index + 1].strip()     
+            else:
+                debug_print("Start Date keyword with nothing next. Ignore position ", index, " from ", strArray)
+                return None
+
+# Looks for session keyword(s) in strArray at position index
+def find_session(strArray, index):
+    if len(strArray) > index:
+        stripStr = strArray[index].strip()
+        if any(x in stripStr for x in SESSION_MATCH):
+            if index + 1 < len(strArray):
+                return strArray[index + 1].strip()
+            else:
+                debug_print("Session keyword with nothing next", index, "  from ", strArray)
+                return None
+
+# Looks for reading score keyword in input string array at position index
+def find_reading_score(strArray, index):
+    if len(strArray) > index:
+        stripStr = strArray[index].strip()
+        if READING_MATCH in stripStr:
+            if index + 1 < len(strArray):
+                return strArray[index + 1].strip()
+            else:
+                debug_print("End of reading score. Ignore position", index, " from ", strArray)
+                return None
+
+# Looks for Lesson keyword in strArray at position index
+# If position is -1 look for the first occurrence in the entire array
+# It is expected that the actual lesson will be in the next position in the array
+def find_lesson(strArray, index):
+    if len(strArray) > index:
+        if index == -1:
+            # Look in all list
+            try:
+                ind = strArray.index(LESSON_MATCH)
+                if ind + 1 < len(strArray):
+                    return strArray[ind + 1].strip()
+                else:
+                    debug_print("Lesson keyword with nothing next. Ignore position ", index, " from ", strArray)
+                    return None
+            except ValueError:
+                return None
+        else:
+            # Look at the given position
+            stripStr = strArray[index].strip()
+            if LESSON_MATCH in stripStr:
+                if index + 1 < len(strArray):
+                    return strArray[index + 1].strip()
+                else:
+                    debug_print("Lesson keyword with nothing next. Ignore position ", index, " from ", strArray)
+            else:
+                return None
+
+# Read data from file
+# Incoming WhatsApp messages sometimes may contain emojis. Hence utf8 encoding.
+ofile = open(DATA_FILE, 'r', encoding="utf8")
+li = []
+d = get_empty_record()
+read_file = ofile.readlines()
+total_lines = len(read_file)
+
+for i in range(len(read_file)):
+    # Look in the file for WhatsApp datetime stamp.
+    x = re.search(WHATSAPP_DATETIME_FORMAT_PATTERN, read_file[i])
+    k = read_file[i].split(':')
+    sanitize_input(k)
+    klen = len(k)
+    debug_print('Read line= ', k)
+    if x is not None:
+        # Get date/ time first
+        dateTime = x.group(0)
+        tmp = dateTime.split(',')
+        # Split the date and time components
+        date_parts = tmp[0].strip().split('/')
+        time_parts = tmp[1].strip().split(' ')
+        
+        # Convert date to "dd/mm/yyyy" format
+        formatted_date = f"{date_parts[1]}/{date_parts[0]}/{date_parts[2]}"
+        
+        d[DATE_KEY] = formatted_date
+        d[TIME_KEY] = time_parts[0]
+        d[PHONE_KEY] = time_parts[2]
+
+        # If data time pattern found in incoming file, it is a start
+        # of a new message which could be a comment or a new record.
+        # If it's a new record, assume the old record is complete and add
+        # it to the list of records. Start creating a new record.
+        if x.group() in read_file[i] and d != {}:
+            if valid_record(d) == True:
+                li.append(d)
+                # Reinitialize d for the next iteration if any
+                d = get_empty_record()
+
+    else:
+        l = []
+        for j in range(klen):
+            if klen != 1:
+                val = find_teacher(k, j)
+                if val is not None:
+                    d[TEACHER_KEY] = val
+                else:
+                    val = find_student_name(k, j)
+                    if val is not None:
+                        d[STUDENT_KEY] = val
+                    else:
+                        val = find_level(k, j)
+                        if val is not None:
+                            d[LEVEL_KEY] = val
+                        else:
+                            val = find_start_date(k, j)
+                            if val is not None:
+                                d[START_DATE_KEY] = val
+                            else:
+                                val = find_session(k, j)
+                                if val is not None:
+                                    d[SESSION_KEY] = val
+                                else:
+                                    val = find_reading_score(k, j)
+                                    if val is not None:
+                                        d[READING_KEY] = val
+                                    else:
+                                        val = find_lesson(k, j)
+                                        if val is not None:
+                                            d[LESSON_KEY] = val
+        if l:
+            temp = d.get(REVIEW_KEY)
+            if temp is None:
+                d[REVIEW_KEY] = l
+            else:
+                d[REVIEW_KEY] += l
+            s = re.split('-|:|\s+', l[0])
+            sanitize_input(s)
+            if d[LEVEL_KEY] is None:
+                val = find_level(s, -1)
+                if val is not None:
+                    d[LEVEL_KEY] = val
+            if d[SESSION_KEY] is None:
+                val = find_session(s, 0)
+                if val is not None:
+                    d[SESSION_KEY] = val
+            if d[READING_KEY] is None:
+                val = find_reading_score(s, 0)
+                if val is not None:
+                    d[READING_KEY] = val
+            if d[LESSON_KEY] is None:
+                val = find_lesson(s, -1)
+                if val is not None:
+                    d[LESSON_KEY] = val
+
+    if i == len(read_file) - 1:
+        if valid_record(d) is True:
+            li.append(d)
+
+lis = []
+main_li = []
+for i in li:
+    lis = []
+    if type(i) == dict:
+        for j in i:
+            if type(i[j]) == list:
+                str1 = ' '.join(i[j])
+                lis.append(str1)
+            else:
+                lis.append(i[j])
+        main_li.append(lis)
+
+ofile.close()
+ifile = open(CSV_FILE, 'w', newline='', encoding="utf8")
+write = csv.writer(ifile)
+write.writerow(CSV_FILE_RECORD_FORMAT)
+write.writerows(main_li)
+
+print("Output successfully written to CSV file:", CSV_FILE)
+ifile.close()
